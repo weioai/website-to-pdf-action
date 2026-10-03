@@ -19,29 +19,42 @@ function publicAddress(address) {
 
 async function validate(raw) {
   const url = new URL(raw);
-  if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) {
+  if (!['http:', 'https:'].includes(url.protocol) || !url.hostname ||
+      (url.port && !['80', '443'].includes(url.port))) {
     throw new Error('Only absolute http(s) URLs are allowed');
   }
   if (net.isIP(url.hostname)) {
     if (!publicAddress(url.hostname)) throw new Error('Private IP addresses are not allowed');
+    return { url: url.toString(), hostname: url.hostname, address: url.hostname };
   } else {
     const records = await dns.lookup(url.hostname, { all: true });
     if (!records.length || records.some(({ address }) => !publicAddress(address))) {
       throw new Error('Host must resolve only to public addresses');
     }
+    // Pin Chromium to the address we just checked.  Re-resolving the hostname
+    // later would make this public-action runner vulnerable to DNS rebinding.
+    const preferred = records.find(({ address }) => net.isIP(address) === 4) ?? records[0];
+    return { url: url.toString(), hostname: url.hostname, address: preferred.address };
   }
-  return url.toString();
 }
 
-await validate(target);
-const browser = await chromium.launch({ headless: true });
+const approved = await validate(target);
+const browser = await chromium.launch({
+  headless: true,
+  args: [`--host-resolver-rules=MAP ${approved.hostname} ${approved.address}, EXCLUDE localhost`],
+});
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.route('**/*', async route => {
-    try { await validate(route.request().url()); await route.continue(); }
+    try {
+      const request = new URL(route.request().url());
+      if (!['http:', 'https:'].includes(request.protocol) || request.hostname !== approved.hostname ||
+          (request.port && !['80', '443'].includes(request.port))) throw new Error('off-host request');
+      await route.continue();
+    }
     catch { await route.abort(); }
   });
-  await page.goto(target, { waitUntil: 'networkidle', timeout: 45_000 });
+  await page.goto(approved.url, { waitUntil: 'networkidle', timeout: 45_000 });
   await page.emulateMedia({ media: 'screen' });
   await page.pdf({ path: 'website.pdf', format: 'A4', printBackground: true });
   console.log('Created website.pdf');
