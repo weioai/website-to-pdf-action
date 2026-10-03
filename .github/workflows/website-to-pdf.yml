@@ -1,0 +1,33 @@
+name: Save a public website as PDF
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: Public http(s) page to save
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - run: node render.mjs
+        env:
+          TARGET_URL: ${{ inputs.url }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: website-pdf
+          path: website.pdf
+          if-no-files-found: error
