@@ -13,28 +13,34 @@ function publicAddress(address) {
       a >= 224);
   }
   const value = address.toLowerCase();
-  return value !== '::1' && !value.startsWith('fc') && !value.startsWith('fd') &&
-    !value.startsWith('fe80:');
+  // Reject mapped IPv4 too: Chromium would otherwise treat ::ffff:127.0.0.1
+  // as loopback even though it is written as an IPv6 literal.
+  return value !== '::' && value !== '::1' && !value.startsWith('::ffff:') &&
+    !value.startsWith('fc') && !value.startsWith('fd') && !/^fe[89ab]/.test(value) &&
+    !value.startsWith('ff') && !value.startsWith('2001:db8:');
 }
 
 async function validate(raw) {
   const url = new URL(raw);
-  if (!['http:', 'https:'].includes(url.protocol) || !url.hostname ||
+  // WHATWG retains brackets around IPv6 literals in hostname; remove them
+  // before classifying or pinning the address.
+  const hostname = url.hostname.replace(/^\[|\]$/g, '');
+  if (!['http:', 'https:'].includes(url.protocol) || !hostname ||
       (url.port && !['80', '443'].includes(url.port))) {
     throw new Error('Only absolute http(s) URLs are allowed');
   }
-  if (net.isIP(url.hostname)) {
-    if (!publicAddress(url.hostname)) throw new Error('Private IP addresses are not allowed');
-    return { url: url.toString(), hostname: url.hostname, address: url.hostname };
+  if (net.isIP(hostname)) {
+    if (!publicAddress(hostname)) throw new Error('Private IP addresses are not allowed');
+    return { url: url.toString(), hostname, address: hostname };
   } else {
-    const records = await dns.lookup(url.hostname, { all: true });
+    const records = await dns.lookup(hostname, { all: true });
     if (!records.length || records.some(({ address }) => !publicAddress(address))) {
       throw new Error('Host must resolve only to public addresses');
     }
     // Pin Chromium to the address we just checked.  Re-resolving the hostname
     // later would make this public-action runner vulnerable to DNS rebinding.
     const preferred = records.find(({ address }) => net.isIP(address) === 4) ?? records[0];
-    return { url: url.toString(), hostname: url.hostname, address: preferred.address };
+    return { url: url.toString(), hostname, address: preferred.address };
   }
 }
 
