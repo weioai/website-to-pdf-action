@@ -15,8 +15,6 @@ The renderer refuses loopback, private-network, link-local, multicast, and non-H
 
 This is intentionally a small, manual workflow: one page per run, A4 output, and GitHub's own Actions limits and retention rules apply. Cookie banners, login walls, and age gates are not clicked or bypassed. Dynamic pages may render differently over time.
 
-Need up to ten public pages delivered together instead of configuring Actions? [Weio's Website PDF Pack](https://weio.ai/services/website-pdf-pack.html?utm_source=github&utm_medium=readme&utm_campaign=website-pdf-action) provides private, automated delivery for a fixed $19 price.
-
 ## Development
 
 ```sh
